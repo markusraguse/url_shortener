@@ -1,15 +1,21 @@
 from flask import Flask, request, redirect, jsonify
-from marshmallow import ValidationError, Schema, fields 
+from marshmallow import ValidationError, Schema, fields
+from apscheduler.schedulers.background import BackgroundScheduler 
+from datetime import datetime, timedelta
 from flasgger import Swagger
 import random
 import string
 
 app = Flask(__name__)
 swagger = Swagger(app)
-short_to_long_url = {"abc":"https://google.com"}
+short_to_long_url = {"abc": {
+    'url' : "google.com",
+    'timestamp' : datetime.now()}}
 
 HOST = "localhost"
-PORT = "5000"
+PORT = "8080"
+
+EXPERITATION_TIME = timedelta(seconds=5)
 
 
 class ShortenURLSchema(Schema):
@@ -22,6 +28,22 @@ def generate_short_code(length=6):
     for _ in range(length):
         short_url += random.choice(string.ascii_letters + string.digits)
     return short_url
+
+def remove_expired_urls():
+    current_time = datetime.now()
+    keys_to_delete = []
+    
+    for key, value in short_to_long_url.items():
+        if current_time - value['timestamp'] > EXPERITATION_TIME:
+            keys_to_delete.append(key)
+    
+    for key in keys_to_delete:
+        del short_to_long_url[key]
+    
+    if keys_to_delete:
+        print(f'Deleted {len(keys_to_delete)} key(s)')
+
+
 
 @app.route('/shorten-url', methods=['POST'])
 def shorten_url():
@@ -55,6 +77,8 @@ def shorten_url():
               type: string
               example: "http://localhost:5000/abc123"
     """
+    
+    remove_expired_urls()
     data = request.get_json()
     try:
         validated_data = shorten_url_schema.load(data)
@@ -68,12 +92,18 @@ def shorten_url():
     short_code = ""
 
     #To avoid having multiple short urls mapping to the same long url
-    if original_url in short_to_long_url.values():
+    in_use_URLS = [entry["url"] for entry in short_to_long_url.values()]
+    if original_url in in_use_URLS:
+        print(f"{original_url} already has a short code")
         #Finds the key corresponding to the value of "original_url" and assigns it to "short_code"
-        short_code = list(short_to_long_url.keys())[list(short_to_long_url.values()).index(original_url)]
+        short_code = list(short_to_long_url.keys())[list(in_use_URLS).index(original_url)]
     else:
         short_code = generate_short_code()
-        short_to_long_url[short_code] = original_url
+        print(f"Generated shortcode {short_code} for {original_url}")
+        short_to_long_url[short_code] = {
+            "url" : original_url,
+            "timestamp" : datetime.now()
+        }
 
     short_url = f"http://{HOST}:{PORT}/{short_code}"
     return jsonify({"url": original_url, "short_url": short_url})
@@ -120,15 +150,13 @@ def redirect_to_url(short_code):
               type: string
               example: "URL not found"
     """
-    print(short_to_long_url)
-    print(short_code)
-    original_url = short_to_long_url[short_code]
-
+    original_url = short_to_long_url[short_code]["url"]
     if original_url:
+        print(f"{short_code} redirected to {original_url}")
         return redirect(original_url, code=302)
     else:
         return jsonify({"error": "URL not found"}), 404
     
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host=HOST, port=PORT)
