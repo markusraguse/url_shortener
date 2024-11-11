@@ -1,6 +1,5 @@
 from flask import Flask, request, redirect, jsonify
 from marshmallow import ValidationError, Schema, fields
-from apscheduler.schedulers.background import BackgroundScheduler 
 from datetime import datetime, timedelta
 from flasgger import Swagger
 import random
@@ -15,7 +14,7 @@ short_to_long_url = {"abc": {
 HOST = "localhost"
 PORT = "8080"
 
-EXPERITATION_TIME = timedelta(seconds=5)
+EXPERITATION_TIME = timedelta(minutes=15)
 
 
 class ShortenURLSchema(Schema):
